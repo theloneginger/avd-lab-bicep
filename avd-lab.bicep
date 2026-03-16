@@ -501,7 +501,9 @@ resource entraJoinExtension 'Microsoft.Compute/virtualMachines/extensions@2023-0
     type: 'AADLoginForWindows'
     typeHandlerVersion: '2.0'
     autoUpgradeMinorVersion: true
-    settings: {}  // No mdmId - Entra join only, Intune enrols automatically via auto-enrolment policy
+    settings: {
+      mdmId: ''  // Empty string = Entra join without MDM enrolment
+    }
   }
 }]
 
