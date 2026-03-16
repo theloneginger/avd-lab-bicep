@@ -1,1 +1,0 @@
-Get-AzResourceGroupDeploymentWhatIfResult -ResourceGroupName "AVDTest" -TemplateFile ".\main.bicep"
