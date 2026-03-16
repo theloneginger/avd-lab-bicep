@@ -1,0 +1,642 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.41.2.15936",
+      "templateHash": "14883563957752322164"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]"
+    },
+    "prefix": {
+      "type": "string",
+      "defaultValue": "avd-lab"
+    },
+    "goldenImageId": {
+      "type": "string"
+    },
+    "vmAdminUsername": {
+      "type": "string",
+      "defaultValue": "avdadmin"
+    },
+    "baseTime": {
+      "type": "string",
+      "defaultValue": "[utcNow()]"
+    },
+    "vmAdminPassword": {
+      "type": "securestring"
+    },
+    "avdUsersGroupId": {
+      "type": "string"
+    },
+    "vmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D4s_v5"
+    },
+    "vmCount": {
+      "type": "int",
+      "defaultValue": 2
+    },
+    "storageAccountSku": {
+      "type": "string",
+      "defaultValue": "Premium_LRS"
+    },
+    "fslogixProfileSizeGB": {
+      "type": "int",
+      "defaultValue": 20,
+      "minValue": 1,
+      "metadata": {
+        "description": "Maximum size of each FSLogix profile in GB"
+      }
+    },
+    "fslogixUserCount": {
+      "type": "int",
+      "defaultValue": 4,
+      "minValue": 1,
+      "metadata": {
+        "description": "Number of users who will have FSLogix profiles"
+      }
+    }
+  },
+  "variables": {
+    "fslogixShareQuotaGB": "[max(mul(parameters('fslogixProfileSizeGB'), parameters('fslogixUserCount')), 100)]",
+    "tags": {
+      "environment": "lab",
+      "project": "avd"
+    },
+    "storageSmbContributorRoleId": "0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb",
+    "storageSmbElevatedContributorRoleId": "a7264617-510b-434b-a828-9731dc254ea7",
+    "registrationTokenExpiry": "[dateTimeAdd(parameters('baseTime'), 'PT24H')]",
+    "dvUserRoleId": "1d18fff3-a72a-46b5-b4a9-0b38a3cd7e63"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-nat-pip', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static"
+      }
+    },
+    {
+      "type": "Microsoft.Network/natGateways",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-nat-gw', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIpAddresses": [
+          {
+            "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-nat-pip', parameters('prefix')))]"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-nat-pip', parameters('prefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-avd-nsg', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "Allow-RDP-Inbound-VNet",
+            "properties": {
+              "priority": 100,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "VirtualNetwork",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "3389"
+            }
+          },
+          {
+            "name": "Allow-AVD-ServiceTag",
+            "properties": {
+              "priority": 110,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "WindowsVirtualDesktop",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "443"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-storage-nsg', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "Allow-SMB-From-AVD-Subnet",
+            "properties": {
+              "priority": 100,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "10.0.1.0/24",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "445"
+            }
+          },
+          {
+            "name": "Deny-All-Inbound",
+            "properties": {
+              "priority": 4096,
+              "protocol": "*",
+              "access": "Deny",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "*"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-vnet', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.0.0.0/16"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "snet-avd-hosts",
+            "properties": {
+              "addressPrefix": "10.0.1.0/24",
+              "natGateway": {
+                "id": "[resourceId('Microsoft.Network/natGateways', format('{0}-nat-gw', parameters('prefix')))]"
+              },
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-avd-nsg', parameters('prefix')))]"
+              }
+            }
+          },
+          {
+            "name": "snet-storage",
+            "properties": {
+              "addressPrefix": "10.0.2.0/24",
+              "privateEndpointNetworkPolicies": "Disabled",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-storage-nsg', parameters('prefix')))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-avd-nsg', parameters('prefix')))]",
+        "[resourceId('Microsoft.Network/natGateways', format('{0}-nat-gw', parameters('prefix')))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-storage-nsg', parameters('prefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "[parameters('storageAccountSku')]"
+      },
+      "kind": "FileStorage",
+      "properties": {
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false,
+        "allowSharedKeyAccess": true,
+        "publicNetworkAccess": "Disabled",
+        "networkAcls": {
+          "bypass": "AzureServices",
+          "defaultAction": "Deny"
+        },
+        "largeFileSharesState": "Enabled",
+        "azureFilesIdentityBasedAuthentication": {
+          "directoryServiceOptions": "AADKERB"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/fileServices/shares",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}/default/fslogix-profiles', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id)))]",
+      "properties": {
+        "shareQuota": "[variables('fslogixShareQuotaGB')]",
+        "enabledProtocols": "SMB"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id)))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones",
+      "apiVersion": "2020-06-01",
+      "name": "privatelink.file.core.windows.net",
+      "location": "global",
+      "tags": "[variables('tags')]"
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+      "apiVersion": "2020-06-01",
+      "name": "[format('{0}/{1}', 'privatelink.file.core.windows.net', format('{0}-dns-link', parameters('prefix')))]",
+      "location": "global",
+      "properties": {
+        "virtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix')))]"
+        },
+        "registrationEnabled": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.file.core.windows.net')]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-storage-pe', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "subnet": {
+          "id": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix'))), '2023-09-01').subnets[1].id]"
+        },
+        "privateLinkServiceConnections": [
+          {
+            "name": "[format('{0}-storage-plsc', parameters('prefix'))]",
+            "properties": {
+              "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id)))]",
+              "groupIds": [
+                "file"
+              ]
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id)))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/{1}', format('{0}-storage-pe', parameters('prefix')), 'default')]",
+      "properties": {
+        "privateDnsZoneConfigs": [
+          {
+            "name": "privatelink-file-core-windows-net",
+            "properties": {
+              "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.file.core.windows.net')]"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.file.core.windows.net')]",
+        "[resourceId('Microsoft.Network/privateEndpoints', format('{0}-storage-pe', parameters('prefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id)))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id))), parameters('avdUsersGroupId'), variables('storageSmbContributorRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageSmbContributorRoleId'))]",
+        "principalId": "[parameters('avdUsersGroupId')]",
+        "principalType": "Group"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id)))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id)))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id))), parameters('avdUsersGroupId'), variables('storageSmbElevatedContributorRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageSmbElevatedContributorRoleId'))]",
+        "principalId": "[parameters('avdUsersGroupId')]",
+        "principalType": "Group"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id)))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DesktopVirtualization/hostPools",
+      "apiVersion": "2023-09-05",
+      "name": "[format('{0}-hp', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "hostPoolType": "Pooled",
+        "loadBalancerType": "BreadthFirst",
+        "maxSessionLimit": 10,
+        "preferredAppGroupType": "Desktop",
+        "startVMOnConnect": true,
+        "registrationInfo": {
+          "expirationTime": "[variables('registrationTokenExpiry')]",
+          "registrationTokenOperation": "Update"
+        },
+        "vmTemplate": "[format('{{\"domain\":\"\",\"galleryImageOffer\":null,\"galleryImagePublisher\":null,\"galleryImageSKU\":null,\"imageType\":\"CustomImage\",\"imageUri\":null,\"customImageId\":\"{0}\",\"namePrefix\":\"{1}-vm\",\"osDiskType\":\"Premium_LRS\",\"vmSize\":{{\"id\":\"{2}\",\"cores\":4,\"ram\":16}},\"galleryItemId\":null,\"hibernate\":false,\"diskSizeGB\":0,\"securityType\":\"trustedLaunch\",\"secureBoot\":true,\"vTPM\":true}}', parameters('goldenImageId'), parameters('prefix'), parameters('vmSize'))]"
+      }
+    },
+    {
+      "type": "Microsoft.DesktopVirtualization/applicationGroups",
+      "apiVersion": "2023-09-05",
+      "name": "[format('{0}-dag', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "applicationGroupType": "Desktop",
+        "hostPoolArmPath": "[resourceId('Microsoft.DesktopVirtualization/hostPools', format('{0}-hp', parameters('prefix')))]",
+        "friendlyName": "AVD Lab Desktop"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DesktopVirtualization/hostPools', format('{0}-hp', parameters('prefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DesktopVirtualization/workspaces",
+      "apiVersion": "2023-09-05",
+      "name": "[format('{0}-ws', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "friendlyName": "AVD Lab Workspace",
+        "applicationGroupReferences": [
+          "[resourceId('Microsoft.DesktopVirtualization/applicationGroups', format('{0}-dag', parameters('prefix')))]"
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DesktopVirtualization/applicationGroups', format('{0}-dag', parameters('prefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.DesktopVirtualization/applicationGroups', format('{0}-dag', parameters('prefix')))]",
+      "name": "[guid(resourceId('Microsoft.DesktopVirtualization/applicationGroups', format('{0}-dag', parameters('prefix'))), parameters('avdUsersGroupId'), variables('dvUserRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('dvUserRoleId'))]",
+        "principalId": "[parameters('avdUsersGroupId')]",
+        "principalType": "Group"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DesktopVirtualization/applicationGroups', format('{0}-dag', parameters('prefix')))]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "sessionHosts",
+        "count": "[length(range(0, parameters('vmCount')))]"
+      },
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-vm-{1}', parameters('prefix'), range(0, parameters('vmCount'))[copyIndex()])]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('vmSize')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "id": "[parameters('goldenImageId')]"
+          },
+          "osDisk": {
+            "createOption": "FromImage",
+            "managedDisk": {
+              "storageAccountType": "Premium_LRS"
+            },
+            "deleteOption": "Delete"
+          }
+        },
+        "osProfile": {
+          "computerName": "[format('{0}-vm-{1}', parameters('prefix'), range(0, parameters('vmCount'))[copyIndex()])]",
+          "adminUsername": "[parameters('vmAdminUsername')]",
+          "adminPassword": "[parameters('vmAdminPassword')]",
+          "windowsConfiguration": {
+            "enableAutomaticUpdates": false,
+            "patchSettings": {
+              "patchMode": "AutomaticByPlatform",
+              "enableHotpatching": false
+            }
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-vm-{1}-nic', parameters('prefix'), range(0, parameters('vmCount'))[range(0, parameters('vmCount'))[copyIndex()]]))]",
+              "properties": {
+                "deleteOption": "Delete"
+              }
+            }
+          ]
+        },
+        "securityProfile": {
+          "securityType": "TrustedLaunch",
+          "uefiSettings": {
+            "secureBootEnabled": true,
+            "vTpmEnabled": true
+          }
+        },
+        "licenseType": "Windows_Client",
+        "diagnosticsProfile": {
+          "bootDiagnostics": {
+            "enabled": true
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-vm-{1}-nic', parameters('prefix'), range(0, parameters('vmCount'))[range(0, parameters('vmCount'))[copyIndex()]]))]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "vmNics",
+        "count": "[length(range(0, parameters('vmCount')))]"
+      },
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-vm-{1}-nic', parameters('prefix'), range(0, parameters('vmCount'))[copyIndex()])]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix'))), '2023-09-01').subnets[0].id]"
+              },
+              "privateIPAllocationMethod": "Dynamic"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix')))]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "entraJoinExtension",
+        "count": "[length(range(0, parameters('vmCount')))]"
+      },
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-vm-{1}/AADLoginForWindows', parameters('prefix'), range(0, parameters('vmCount'))[copyIndex()])]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "publisher": "Microsoft.Azure.ActiveDirectory",
+        "type": "AADLoginForWindows",
+        "typeHandlerVersion": "2.0",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "mdmId": "0000000a-0000-0000-c000-000000000000"
+        }
+      },
+      "dependsOn": [
+        "sessionHosts"
+      ]
+    },
+    {
+      "copy": {
+        "name": "avdAgentExtension",
+        "count": "[length(range(0, parameters('vmCount')))]"
+      },
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-vm-{1}/Microsoft.PowerShell.DSC', parameters('prefix'), range(0, parameters('vmCount'))[copyIndex()])]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "publisher": "Microsoft.Powershell",
+        "type": "DSC",
+        "typeHandlerVersion": "2.73",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "modulesUrl": "[format('https://wvdportalstorageblob.blob.{0}/galleryartifacts/Configuration_09-08-2022.zip', environment().suffixes.storage)]",
+          "configurationFunction": "Configuration.ps1\\AddSessionHost",
+          "properties": {
+            "hostPoolName": "[format('{0}-hp', parameters('prefix'))]",
+            "registrationInfoTokenCredential": {
+              "UserName": "PLACEHOLDER",
+              "Password": "PrivateSettingsRef:registrationInfoToken"
+            },
+            "aadJoin": true,
+            "mdmId": "0000000a-0000-0000-c000-000000000000"
+          }
+        },
+        "protectedSettings": {
+          "items": {
+            "registrationInfoToken": "[reference(resourceId('Microsoft.DesktopVirtualization/hostPools', format('{0}-hp', parameters('prefix'))), '2023-09-05').registrationInfo.token]"
+          }
+        }
+      },
+      "dependsOn": [
+        "entraJoinExtension",
+        "[resourceId('Microsoft.DesktopVirtualization/hostPools', format('{0}-hp', parameters('prefix')))]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "fslogixConfigExtension",
+        "count": "[length(range(0, parameters('vmCount')))]"
+      },
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-vm-{1}/FSLogixConfig', parameters('prefix'), range(0, parameters('vmCount'))[copyIndex()])]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "publisher": "Microsoft.Compute",
+        "type": "CustomScriptExtension",
+        "typeHandlerVersion": "1.10",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "commandToExecute": "        powershell.exe -ExecutionPolicy Unrestricted -Command \"\n          $RegPath = 'HKLM:\\\\SOFTWARE\\\\FSLogix\\\\Profiles';\n          New-Item -Path $RegPath -Force | Out-Null;\n          Set-ItemProperty -Path $RegPath -Name Enabled         -Value 1           -Type DWord;\n          Set-ItemProperty -Path $RegPath -Name VHDLocations    -Value '\\\\\\\\${storageAccount.name}.file.${environment().suffixes.storage}\\\\fslogix-profiles' -Type MultiString;\n          Set-ItemProperty -Path $RegPath -Name VolumeType      -Value 'VHDX'      -Type String;\n          Set-ItemProperty -Path $RegPath -Name SizeInMBs       -Value ${fslogixProfileSizeGB * 1024} -Type DWord;\n          Set-ItemProperty -Path $RegPath -Name DeleteLocalProfileWhenVHDShouldApply -Value 1 -Type DWord;\n          Set-ItemProperty -Path $RegPath -Name FlipFlopProfileDirectoryName -Value 1 -Type DWord;\n          Set-ItemProperty -Path $RegPath -Name AccessNetworkAsComputerObject -Value 1 -Type DWord;\n          $CloudPath = 'HKLM:\\\\SOFTWARE\\\\Policies\\\\FSLogix\\\\ODFC';\n          New-Item -Path $CloudPath -Force | Out-Null;\n          Set-ItemProperty -Path $CloudPath -Name StorageAccountName -Value '${storageAccount.name}' -Type String;\n          Write-Output 'FSLogix Entra Kerberos registry keys written successfully.'\n        \"\n      "
+        }
+      },
+      "dependsOn": [
+        "avdAgentExtension"
+      ]
+    }
+  ],
+  "outputs": {
+    "vnetId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix')))]"
+    },
+    "hostSubnetId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix'))), '2023-09-01').subnets[0].id]"
+    },
+    "storageSubnetId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix'))), '2023-09-01').subnets[1].id]"
+    },
+    "storageAccountName": {
+      "type": "string",
+      "value": "[format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id))]"
+    },
+    "fslogixSharePath": {
+      "type": "string",
+      "value": "[format('\\\\{0}.file.{1}\\fslogix-profiles', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id)), environment().suffixes.storage)]"
+    },
+    "hostPoolName": {
+      "type": "string",
+      "value": "[format('{0}-hp', parameters('prefix'))]"
+    },
+    "workspaceName": {
+      "type": "string",
+      "value": "[format('{0}-ws', parameters('prefix'))]"
+    },
+    "appGroupName": {
+      "type": "string",
+      "value": "[format('{0}-dag', parameters('prefix'))]"
+    }
+  }
+}

@@ -1,0 +1,306 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+
+    "config": {
+      "isWizard": true,
+      "basics": {
+        "description": "## Azure Virtual Desktop Lab\nThis template deploys a fully configured 2-VM AVD environment including:\n- **Pooled Host Pool** with 2 Entra ID-joined session hosts\n- **FSLogix** profile containers via Azure Files Premium v2\n- **NAT Gateway** for secure outbound internet (no public IPs on VMs)\n- **Private Endpoint** for storage (all FSLogix traffic stays on the VNet)\n- **Intune auto-enrolment** for the AVD Devices group\n\n---\n**Pre-requisites before deploying:**\n- A golden VM image (Managed Image or Shared Image Gallery version)\n- An Entra ID group called **AVD Users** containing your users\n- An Entra ID group called **AVD Devices** (for Intune policy targeting)",
+        "location": {
+          "label": "Region",
+          "toolTip": "Region where all resources will be deployed.",
+          "resourceTypes": [
+            "Microsoft.DesktopVirtualization/hostPools",
+            "Microsoft.Compute/virtualMachines",
+            "Microsoft.Storage/storageAccounts"
+          ]
+        }
+      }
+    },
+
+    "basics": [
+      {
+        "name": "prefix",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Resource prefix",
+        "defaultValue": "avd-lab",
+        "toolTip": "Short prefix applied to all resource names, e.g. 'avd-lab' produces avd-lab-vnet, avd-lab-hp, etc.",
+        "constraints": {
+          "required": true,
+          "regex": "^[a-z0-9-]{3,15}$",
+          "validationMessage": "3–15 characters, lowercase letters, numbers and hyphens only."
+        }
+      }
+    ],
+
+    "steps": [
+
+      {
+        "name": "sessionHosts",
+        "label": "Session Hosts",
+        "subLabel": {
+          "preValidation": "Configure your AVD virtual machines",
+          "postValidation": "Done"
+        },
+        "bladeTitle": "Session Hosts",
+        "elements": [
+
+          {
+            "name": "goldenImageInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "Select the golden image you prepared for the session hosts. This can be a Managed Image or a Shared Image Gallery version."
+            }
+          },
+          {
+            "name": "goldenImageId",
+            "type": "Microsoft.Solutions.ResourceSelector",
+            "label": "Golden image",
+            "toolTip": "Select your prepared Managed Image. For Shared Image Gallery versions, use the text box below instead.",
+            "resourceType": "Microsoft.Compute/images",
+            "options": {
+              "filter": {
+                "subscription": "onBasics",
+                "location": "onBasics"
+              }
+            }
+          },
+          {
+            "name": "goldenImageIdOverride",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Or enter a Shared Image Gallery version resource ID",
+            "defaultValue": "",
+            "toolTip": "Paste the full resource ID of a SIG image version if you are not using a Managed Image. Leave blank if you selected an image above.",
+            "constraints": {
+              "required": false
+            }
+          },
+          {
+            "name": "vmSection",
+            "type": "Microsoft.Common.Section",
+            "label": "Virtual machine settings",
+            "elements": [
+              {
+                "name": "vmCount",
+                "type": "Microsoft.Common.DropDown",
+                "label": "Number of session hosts",
+                "defaultValue": "2",
+                "toolTip": "How many session host VMs to deploy into the host pool.",
+                "constraints": {
+                  "required": true,
+                  "allowedValues": [
+                    { "label": "1", "value": 1 },
+                    { "label": "2", "value": 2 },
+                    { "label": "3", "value": 3 },
+                    { "label": "4", "value": 4 }
+                  ]
+                }
+              },
+              {
+                "name": "vmSize",
+                "type": "Microsoft.Compute.SizeSelector",
+                "label": "VM size",
+                "toolTip": "Size for each session host VM. D-series v5 recommended for AVD.",
+                "recommendedSizes": [
+                  "Standard_D4s_v5",
+                  "Standard_D8s_v5",
+                  "Standard_D2s_v5"
+                ],
+                "constraints": {
+                  "allowedSizes": [
+                    "Standard_D2s_v5",
+                    "Standard_D4s_v5",
+                    "Standard_D8s_v5",
+                    "Standard_D16s_v5",
+                    "Standard_D2s_v4",
+                    "Standard_D4s_v4",
+                    "Standard_D8s_v4"
+                  ]
+                },
+                "options": {
+                  "hideDiskTypeFilter": false
+                },
+                "osPlatform": "Windows",
+                "count": 1
+              }
+            ]
+          },
+          {
+            "name": "adminSection",
+            "type": "Microsoft.Common.Section",
+            "label": "Local administrator account",
+            "elements": [
+              {
+                "name": "vmAdminCredentials",
+                "type": "Microsoft.Compute.CredentialsCombo",
+                "label": {
+                  "username": "Username",
+                  "password": "Password",
+                  "confirmPassword": "Confirm password"
+                },
+                "toolTip": {
+                  "username": "Local admin account created on each session host.",
+                  "password": "Must meet Azure VM password complexity requirements."
+                },
+                "constraints": {
+                  "required": true,
+                  "customPasswordRegex": "^(?=.*[A-Z])(?=.*[a-z])(?=.*\\d)(?=.*[^A-Za-z\\d]).{12,}$",
+                  "customValidationMessage": "Password must be at least 12 characters and include uppercase, lowercase, a number, and a special character."
+                },
+                "options": {
+                  "hideConfirmation": false
+                },
+                "osPlatform": "Windows",
+                "visible": true
+              }
+            ]
+          }
+        ]
+      },
+
+      {
+        "name": "identity",
+        "label": "Identity & Access",
+        "subLabel": {
+          "preValidation": "Configure Entra ID groups",
+          "postValidation": "Done"
+        },
+        "bladeTitle": "Identity & Access",
+        "elements": [
+          {
+            "name": "identityInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "The AVD Users group will be granted 'Desktop Virtualization User' on the App Group and SMB access to the FSLogix file share. The AVD Devices group is used for Intune policy targeting and does not require any configuration here."
+            }
+          },
+          {
+            "name": "avdUsersGroupId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "AVD Users group Object ID",
+            "toolTip": "The Object ID of your 'AVD Users' Entra ID security group. Find it in Entra ID > Groups > AVD Users > Overview.",
+            "placeholder": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "constraints": {
+              "required": true,
+              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "validationMessage": "Must be a valid GUID in the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx."
+            }
+          }
+        ]
+      },
+
+      {
+        "name": "fslogix",
+        "label": "FSLogix & Storage",
+        "subLabel": {
+          "preValidation": "Configure profile container storage",
+          "postValidation": "Done"
+        },
+        "bladeTitle": "FSLogix & Storage",
+        "elements": [
+          {
+            "name": "fslogixInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "FSLogix profiles are stored on an Azure Files Premium v2 share accessed via a Private Endpoint. The share quota is calculated automatically from the values below. Azure Files Premium has a minimum share size of 100 GB."
+            }
+          },
+          {
+            "name": "fslogixProfileSizeGB",
+            "type": "Microsoft.Common.Slider",
+            "label": "Profile size per user (GB)",
+            "toolTip": "Maximum size of each user's FSLogix profile VHDX. This is also written to the VMs as the FSLogix SizeInMBs registry value.",
+            "min": 5,
+            "max": 100,
+            "defaultValue": 20,
+            "showStepMarkers": false,
+            "constraints": {
+              "required": true
+            }
+          },
+          {
+            "name": "fslogixUserCount",
+            "type": "Microsoft.Common.Slider",
+            "label": "Number of users",
+            "toolTip": "Total number of users who will have FSLogix profiles. Used to calculate the required file share quota.",
+            "min": 1,
+            "max": 50,
+            "defaultValue": 4,
+            "showStepMarkers": false,
+            "constraints": {
+              "required": true
+            }
+          },
+          {
+            "name": "quotaSummary",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "None",
+              "text": "[concat('Calculated share quota: ', string(max(mul(steps('fslogix').fslogixProfileSizeGB, steps('fslogix').fslogixUserCount), 100)), ' GB  (', string(steps('fslogix').fslogixProfileSizeGB), ' GB × ', string(steps('fslogix').fslogixUserCount), ' users', if(less(mul(steps('fslogix').fslogixProfileSizeGB, steps('fslogix').fslogixUserCount), 100), ' — minimum 100 GB applied)', ')'))]"
+            }
+          },
+          {
+            "name": "storageAccountSku",
+            "type": "Microsoft.Common.DropDown",
+            "label": "Storage redundancy",
+            "defaultValue": "Premium LRS (locally redundant)",
+            "toolTip": "LRS is sufficient for a lab. ZRS provides zone redundancy for production.",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                { "label": "Premium LRS (locally redundant)", "value": "Premium_LRS" },
+                { "label": "Premium ZRS (zone redundant)", "value": "Premium_ZRS" }
+              ]
+            }
+          }
+        ]
+      },
+
+      {
+        "name": "summary",
+        "label": "Review + Deploy",
+        "subLabel": {
+          "preValidation": "Review your configuration",
+          "postValidation": "Ready to deploy"
+        },
+        "bladeTitle": "Summary",
+        "elements": [
+          {
+            "name": "summaryInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "None",
+              "text": "[concat('**Deployment summary**\n\n**Region:** ', location(), '\n**Prefix:** ', basics('prefix'), '\n**Session hosts:** ', string(steps('sessionHosts').vmSection.vmCount), ' × ', steps('sessionHosts').vmSection.vmSize, '\n**FSLogix share:** ', string(max(mul(steps('fslogix').fslogixProfileSizeGB, steps('fslogix').fslogixUserCount), 100)), ' GB (', string(steps('fslogix').fslogixProfileSizeGB), ' GB × ', string(steps('fslogix').fslogixUserCount), ' users)\n**Storage SKU:** ', steps('fslogix').storageAccountSku)]"
+            }
+          }
+        ]
+      }
+
+    ],
+
+    "outputs": {
+      "location":             "[location()]",
+      "prefix":               "[basics('prefix')]",
+      "goldenImageId":        "[if(empty(steps('sessionHosts').goldenImageIdOverride), steps('sessionHosts').goldenImageId.id, steps('sessionHosts').goldenImageIdOverride)]",
+      "vmAdminUsername":      "[steps('sessionHosts').adminSection.vmAdminCredentials.username]",
+      "vmAdminPassword":      "[steps('sessionHosts').adminSection.vmAdminCredentials.password]",
+      "vmSize":               "[steps('sessionHosts').vmSection.vmSize]",
+      "vmCount":              "[steps('sessionHosts').vmSection.vmCount]",
+      "avdUsersGroupId":      "[steps('identity').avdUsersGroupId]",
+      "storageAccountSku":    "[steps('fslogix').storageAccountSku]",
+      "fslogixProfileSizeGB": "[steps('fslogix').fslogixProfileSizeGB]",
+      "fslogixUserCount":     "[steps('fslogix').fslogixUserCount]"
+    }
+
+  }
+}
