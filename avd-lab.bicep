@@ -406,8 +406,7 @@ resource sessionHosts 'Microsoft.Compute/virtualMachines@2023-09-01' = [for i in
       windowsConfiguration: {
         enableAutomaticUpdates: false   // Managed via Intune/WUfB
         patchSettings: {
-          patchMode: 'AutomaticByPlatform'
-          enableHotpatching: false
+          patchMode: 'Manual'           // AutomaticByPlatform requires a supported marketplace image
         }
       }
     }
