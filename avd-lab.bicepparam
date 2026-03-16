@@ -16,7 +16,7 @@ param avdUsersGroupId = '00000000-0000-0000-0000-000000000000'
 
 // --- Session Host VMs ---
 param vmAdminUsername = 'avdadmin'
-param vmSize = 'Standard_D4s_v5'
+param vmSize = 'Standard_D2as_v6'
 param vmCount = 2
 
 // --- Storage ---

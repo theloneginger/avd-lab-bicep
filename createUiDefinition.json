@@ -71,10 +71,22 @@
             "constraints": {
               "required": true,
               "allowedValues": [
-                { "label": "1", "value": 1 },
-                { "label": "2", "value": 2 },
-                { "label": "3", "value": 3 },
-                { "label": "4", "value": 4 }
+                {
+                  "label": "1",
+                  "value": 1
+                },
+                {
+                  "label": "2",
+                  "value": 2
+                },
+                {
+                  "label": "3",
+                  "value": 3
+                },
+                {
+                  "label": "4",
+                  "value": 4
+                }
               ]
             }
           },
@@ -82,18 +94,43 @@
             "name": "vmSize",
             "type": "Microsoft.Common.DropDown",
             "label": "Session host VM size",
-            "defaultValue": "Standard_D4s_v5",
+            "defaultValue": "Standard_D2as_v6",
             "toolTip": "Size for each session host VM. D-series v5 is recommended for AVD.",
             "constraints": {
               "required": true,
               "allowedValues": [
-                { "label": "Standard_D2s_v5 (2 vCPU, 8 GB RAM)", "value": "Standard_D2s_v5" },
-                { "label": "Standard_D4s_v5 (4 vCPU, 16 GB RAM) - recommended", "value": "Standard_D4s_v5" },
-                { "label": "Standard_D8s_v5 (8 vCPU, 32 GB RAM)", "value": "Standard_D8s_v5" },
-                { "label": "Standard_D16s_v5 (16 vCPU, 64 GB RAM)", "value": "Standard_D16s_v5" },
-                { "label": "Standard_D2s_v4 (2 vCPU, 8 GB RAM)", "value": "Standard_D2s_v4" },
-                { "label": "Standard_D4s_v4 (4 vCPU, 16 GB RAM)", "value": "Standard_D4s_v4" },
-                { "label": "Standard_D8s_v4 (8 vCPU, 32 GB RAM)", "value": "Standard_D8s_v4" }
+                {
+                  "label": "Standard_D2as_v6 (2 vCPU, 8 GB RAM)",
+                  "value": "Standard_D2as_v6"
+                },
+                {
+                  "label": "Standard_D2s_v5 (2 vCPU, 8 GB RAM)",
+                  "value": "Standard_D2s_v5"
+                },
+                {
+                  "label": "Standard_D4s_v5 (4 vCPU, 16 GB RAM) - recommended",
+                  "value": "Standard_D4s_v5"
+                },
+                {
+                  "label": "Standard_D8s_v5 (8 vCPU, 32 GB RAM)",
+                  "value": "Standard_D8s_v5"
+                },
+                {
+                  "label": "Standard_D16s_v5 (16 vCPU, 64 GB RAM)",
+                  "value": "Standard_D16s_v5"
+                },
+                {
+                  "label": "Standard_D2s_v4 (2 vCPU, 8 GB RAM)",
+                  "value": "Standard_D2s_v4"
+                },
+                {
+                  "label": "Standard_D4s_v4 (4 vCPU, 16 GB RAM)",
+                  "value": "Standard_D4s_v4"
+                },
+                {
+                  "label": "Standard_D8s_v4 (8 vCPU, 32 GB RAM)",
+                  "value": "Standard_D8s_v4"
+                }
               ]
             }
           },
@@ -185,13 +222,34 @@
             "constraints": {
               "required": true,
               "allowedValues": [
-                { "label": "10 GB", "value": 10 },
-                { "label": "20 GB", "value": 20 },
-                { "label": "30 GB", "value": 30 },
-                { "label": "40 GB", "value": 40 },
-                { "label": "50 GB", "value": 50 },
-                { "label": "75 GB", "value": 75 },
-                { "label": "100 GB", "value": 100 }
+                {
+                  "label": "10 GB",
+                  "value": 10
+                },
+                {
+                  "label": "20 GB",
+                  "value": 20
+                },
+                {
+                  "label": "30 GB",
+                  "value": 30
+                },
+                {
+                  "label": "40 GB",
+                  "value": 40
+                },
+                {
+                  "label": "50 GB",
+                  "value": 50
+                },
+                {
+                  "label": "75 GB",
+                  "value": 75
+                },
+                {
+                  "label": "100 GB",
+                  "value": 100
+                }
               ]
             }
           },
@@ -204,18 +262,54 @@
             "constraints": {
               "required": true,
               "allowedValues": [
-                { "label": "1", "value": 1 },
-                { "label": "2", "value": 2 },
-                { "label": "3", "value": 3 },
-                { "label": "4", "value": 4 },
-                { "label": "5", "value": 5 },
-                { "label": "10", "value": 10 },
-                { "label": "15", "value": 15 },
-                { "label": "20", "value": 20 },
-                { "label": "25", "value": 25 },
-                { "label": "30", "value": 30 },
-                { "label": "40", "value": 40 },
-                { "label": "50", "value": 50 }
+                {
+                  "label": "1",
+                  "value": 1
+                },
+                {
+                  "label": "2",
+                  "value": 2
+                },
+                {
+                  "label": "3",
+                  "value": 3
+                },
+                {
+                  "label": "4",
+                  "value": 4
+                },
+                {
+                  "label": "5",
+                  "value": 5
+                },
+                {
+                  "label": "10",
+                  "value": 10
+                },
+                {
+                  "label": "15",
+                  "value": 15
+                },
+                {
+                  "label": "20",
+                  "value": 20
+                },
+                {
+                  "label": "25",
+                  "value": 25
+                },
+                {
+                  "label": "30",
+                  "value": 30
+                },
+                {
+                  "label": "40",
+                  "value": 40
+                },
+                {
+                  "label": "50",
+                  "value": 50
+                }
               ]
             }
           },
@@ -228,8 +322,14 @@
             "constraints": {
               "required": true,
               "allowedValues": [
-                { "label": "Premium LRS (locally redundant)", "value": "Premium_LRS" },
-                { "label": "Premium ZRS (zone redundant)", "value": "Premium_ZRS" }
+                {
+                  "label": "Premium LRS (locally redundant)",
+                  "value": "Premium_LRS"
+                },
+                {
+                  "label": "Premium ZRS (zone redundant)",
+                  "value": "Premium_ZRS"
+                }
               ]
             }
           }
@@ -237,17 +337,17 @@
       }
     ],
     "outputs": {
-      "location":             "[location()]",
-      "prefix":               "[basics('prefix')]",
-      "goldenImageId":        "[steps('sessionHosts').goldenImageId]",
-      "vmAdminUsername":      "[steps('sessionHosts').vmAdminUsername]",
-      "vmAdminPassword":      "[steps('sessionHosts').vmAdminPassword]",
-      "vmSize":               "[steps('sessionHosts').vmSize]",
-      "vmCount":              "[steps('sessionHosts').vmCount]",
-      "avdUsersGroupId":      "[steps('identity').avdUsersGroupId]",
-      "storageAccountSku":    "[steps('fslogix').storageAccountSku]",
+      "location": "[location()]",
+      "prefix": "[basics('prefix')]",
+      "goldenImageId": "[steps('sessionHosts').goldenImageId]",
+      "vmAdminUsername": "[steps('sessionHosts').vmAdminUsername]",
+      "vmAdminPassword": "[steps('sessionHosts').vmAdminPassword]",
+      "vmSize": "[steps('sessionHosts').vmSize]",
+      "vmCount": "[steps('sessionHosts').vmCount]",
+      "avdUsersGroupId": "[steps('identity').avdUsersGroupId]",
+      "storageAccountSku": "[steps('fslogix').storageAccountSku]",
       "fslogixProfileSizeGB": "[steps('fslogix').fslogixProfileSizeGB]",
-      "fslogixUserCount":     "[steps('fslogix').fslogixUserCount]"
+      "fslogixUserCount": "[steps('fslogix').fslogixUserCount]"
     }
   }
 }
