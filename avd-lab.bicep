@@ -449,20 +449,59 @@ resource vmNics 'Microsoft.Network/networkInterfaces@2023-09-01' = [for i in ran
 
 // --- Extensions (applied after VM is provisioned) ---
 
-// 16. AADLoginForWindows - Entra ID join + optional Intune enrollment
+// 16a. Network readiness check - waits for NAT Gateway routes to propagate before Entra join
+resource networkReadyExtension 'Microsoft.Compute/virtualMachines/extensions@2023-09-01' = [for i in range(0, vmCount): {
+  name: '${prefix}-vm-${i}/NetworkReadyCheck'
+  location: location
+  tags: tags
+  dependsOn: [ sessionHosts, natGateway, vnet ]
+  properties: {
+    publisher: 'Microsoft.Compute'
+    type: 'CustomScriptExtension'
+    typeHandlerVersion: '1.10'
+    autoUpgradeMinorVersion: true
+    settings: {
+      commandToExecute: '''
+        powershell.exe -ExecutionPolicy Unrestricted -Command "
+          $maxAttempts = 12
+          $attempt = 0
+          $connected = $false
+          while (-not $connected -and $attempt -lt $maxAttempts) {
+            $attempt++
+            Write-Output "Connectivity check attempt $attempt of $maxAttempts"
+            try {
+              $response = Invoke-WebRequest -Uri 'https://login.microsoftonline.com' -UseBasicParsing -TimeoutSec 10
+              if ($response.StatusCode -eq 200) {
+                $connected = $true
+                Write-Output 'Network connectivity confirmed - login.microsoftonline.com reachable'
+              }
+            } catch {
+              Write-Output "Not yet reachable: $_"
+              Start-Sleep -Seconds 15
+            }
+          }
+          if (-not $connected) {
+            Write-Error 'Network connectivity check failed after all attempts'
+            exit 1
+          }
+        "
+      '''
+    }
+  }
+}]
+
+// 16b. AADLoginForWindows - Entra ID join + optional Intune enrollment
 resource entraJoinExtension 'Microsoft.Compute/virtualMachines/extensions@2023-09-01' = [for i in range(0, vmCount): {
   name: '${prefix}-vm-${i}/AADLoginForWindows'
   location: location
   tags: tags
-  dependsOn: [ sessionHosts ]
+  dependsOn: [ networkReadyExtension ]
   properties: {
     publisher: 'Microsoft.Azure.ActiveDirectory'
     type: 'AADLoginForWindows'
     typeHandlerVersion: '2.0'
     autoUpgradeMinorVersion: true
-    settings: {
-      mdmId: '0000000a-0000-0000-c000-000000000000'  // Microsoft Intune MDM app ID
-    }
+    settings: {}  // No mdmId - Entra join only, Intune enrols automatically via auto-enrolment policy
   }
 }]
 
@@ -487,7 +526,6 @@ resource avdAgentExtension 'Microsoft.Compute/virtualMachines/extensions@2023-09
           Password: 'PrivateSettingsRef:registrationInfoToken'
         }
         aadJoin: true                 // Tells DSC this is an Entra-only join (no AD DS)
-        mdmId: '0000000a-0000-0000-c000-000000000000'
       }
     }
     protectedSettings: {

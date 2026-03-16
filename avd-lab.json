@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "4581707835476254363"
+      "templateHash": "4787150014972630567"
     }
   },
   "parameters": {
@@ -520,6 +520,31 @@
     },
     {
       "copy": {
+        "name": "networkReadyExtension",
+        "count": "[length(range(0, parameters('vmCount')))]"
+      },
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-vm-{1}/NetworkReadyCheck', parameters('prefix'), range(0, parameters('vmCount'))[copyIndex()])]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "publisher": "Microsoft.Compute",
+        "type": "CustomScriptExtension",
+        "typeHandlerVersion": "1.10",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "commandToExecute": "        powershell.exe -ExecutionPolicy Unrestricted -Command \"\n          $maxAttempts = 12\n          $attempt = 0\n          $connected = $false\n          while (-not $connected -and $attempt -lt $maxAttempts) {\n            $attempt++\n            Write-Output \"Connectivity check attempt $attempt of $maxAttempts\"\n            try {\n              $response = Invoke-WebRequest -Uri 'https://login.microsoftonline.com' -UseBasicParsing -TimeoutSec 10\n              if ($response.StatusCode -eq 200) {\n                $connected = $true\n                Write-Output 'Network connectivity confirmed - login.microsoftonline.com reachable'\n              }\n            } catch {\n              Write-Output \"Not yet reachable: $_\"\n              Start-Sleep -Seconds 15\n            }\n          }\n          if (-not $connected) {\n            Write-Error 'Network connectivity check failed after all attempts'\n            exit 1\n          }\n        \"\n      "
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/natGateways', format('{0}-nat-gw', parameters('prefix')))]",
+        "sessionHosts",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix')))]"
+      ]
+    },
+    {
+      "copy": {
         "name": "entraJoinExtension",
         "count": "[length(range(0, parameters('vmCount')))]"
       },
@@ -533,12 +558,10 @@
         "type": "AADLoginForWindows",
         "typeHandlerVersion": "2.0",
         "autoUpgradeMinorVersion": true,
-        "settings": {
-          "mdmId": "0000000a-0000-0000-c000-000000000000"
-        }
+        "settings": {}
       },
       "dependsOn": [
-        "sessionHosts"
+        "networkReadyExtension"
       ]
     },
     {
@@ -565,8 +588,7 @@
               "UserName": "PLACEHOLDER",
               "Password": "PrivateSettingsRef:registrationInfoToken"
             },
-            "aadJoin": true,
-            "mdmId": "0000000a-0000-0000-c000-000000000000"
+            "aadJoin": true
           }
         },
         "protectedSettings": {
