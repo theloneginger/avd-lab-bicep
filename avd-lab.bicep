@@ -323,6 +323,7 @@ resource hostPool 'Microsoft.DesktopVirtualization/hostPools@2023-09-05' = {
     loadBalancerType: 'BreadthFirst'
     maxSessionLimit: 10
     preferredAppGroupType: 'Desktop'
+    customRdpProperty: 'enablerdsaadauth:i:1;targetisaadjoined:i:1;drivestoredirect:s:;'
     startVMOnConnect: true
     registrationInfo: {
       expirationTime: registrationTokenExpiry
@@ -370,6 +371,20 @@ resource avdUsersRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
     principalType: 'Group'
   }
 }
+
+// 15b. RBAC - Assign 'Virtual Machine User Login' to 'AVD Users' group on each session host
+//      Required for Entra-joined VMs - without this users cannot log into the VM via AVD
+var vmUserLoginRoleId = 'fb879df8-f326-4884-b1cf-06f3ad86be52'
+
+resource vmUserLoginRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for i in range(0, vmCount): {
+  name: guid('${prefix}-vm-${i}', avdUsersGroupId, vmUserLoginRoleId)
+  scope: sessionHosts[i]
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', vmUserLoginRoleId)
+    principalId: avdUsersGroupId
+    principalType: 'Group'
+  }
+}]
 
 // =============================================================================
 // SESSION HOSTS - 2 VMs, Entra ID joined, Intune enrolled, AVD agent installed

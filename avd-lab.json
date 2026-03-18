@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "5140871709935619018"
+      "templateHash": "9474524941402721188"
     }
   },
   "parameters": {
@@ -72,7 +72,8 @@
     "storageSmbContributorRoleId": "0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb",
     "storageSmbElevatedContributorRoleId": "a7264617-510b-434b-a828-9731dc254ea7",
     "registrationTokenExpiry": "[dateTimeAdd(parameters('baseTime'), 'PT24H')]",
-    "dvUserRoleId": "1d18fff3-a72a-46b5-b4a9-0b38a3cd7e63"
+    "dvUserRoleId": "1d18fff3-a72a-46b5-b4a9-0b38a3cd7e63",
+    "vmUserLoginRoleId": "fb879df8-f326-4884-b1cf-06f3ad86be52"
   },
   "resources": [
     {
@@ -370,6 +371,7 @@
         "loadBalancerType": "BreadthFirst",
         "maxSessionLimit": 10,
         "preferredAppGroupType": "Desktop",
+        "customRdpProperty": "enablerdsaadauth:i:1;targetisaadjoined:i:1;drivestoredirect:s:;",
         "startVMOnConnect": true,
         "registrationInfo": {
           "expirationTime": "[variables('registrationTokenExpiry')]",
@@ -421,6 +423,24 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.DesktopVirtualization/applicationGroups', format('{0}-dag', parameters('prefix')))]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "vmUserLoginRbac",
+        "count": "[length(range(0, parameters('vmCount')))]"
+      },
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Compute/virtualMachines', format('{0}-vm-{1}', parameters('prefix'), range(0, parameters('vmCount'))[range(0, parameters('vmCount'))[copyIndex()]]))]",
+      "name": "[guid(format('{0}-vm-{1}', parameters('prefix'), range(0, parameters('vmCount'))[copyIndex()]), parameters('avdUsersGroupId'), variables('vmUserLoginRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('vmUserLoginRoleId'))]",
+        "principalId": "[parameters('avdUsersGroupId')]",
+        "principalType": "Group"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', format('{0}-vm-{1}', parameters('prefix'), range(0, parameters('vmCount'))[range(0, parameters('vmCount'))[copyIndex()]]))]"
       ]
     },
     {
