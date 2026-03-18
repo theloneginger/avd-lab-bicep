@@ -29,7 +29,7 @@ A fully automated Azure Virtual Desktop environment deployable either from the *
 
 Before deploying, ensure you have:
 
-1. **A golden VM image** — either a Managed Image or a Shared Image Gallery version in the same subscription
+1. **A golden VM image** — either a Managed Image or a Shared Image Gallery version in the same subscription. It is recommended to install FSLogix into the golden image before capturing it as this saves time during deployment — however it is not required as the deployment will automatically download and install FSLogix if it is not detected on the VM
 2. **AVD Users** — an Entra ID security group containing your AVD users
 3. **AVD Devices** — an Entra ID security group (used for Intune policy targeting, no action needed at deploy time)
 4. **One-time storage setup** — after first deployment, run the following to enable Entra Kerberos on the storage account (only needed once per storage account):

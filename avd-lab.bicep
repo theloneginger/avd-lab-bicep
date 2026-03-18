@@ -450,43 +450,38 @@ resource vmNics 'Microsoft.Network/networkInterfaces@2023-09-01' = [for i in ran
 // --- Extensions (applied after VM is provisioned) ---
 
 // 16a. Network readiness check - waits for NAT Gateway routes to propagate before Entra join
-resource networkReadyExtension 'Microsoft.Compute/virtualMachines/extensions@2023-09-01' = [for i in range(0, vmCount): {
+resource networkReadyExtension 'Microsoft.Compute/virtualMachines/runCommands@2023-09-01' = [for i in range(0, vmCount): {
   name: '${prefix}-vm-${i}/NetworkReadyCheck'
   location: location
   tags: tags
   dependsOn: [ sessionHosts, natGateway, vnet ]
   properties: {
-    publisher: 'Microsoft.Compute'
-    type: 'CustomScriptExtension'
-    typeHandlerVersion: '1.10'
-    autoUpgradeMinorVersion: true
-    settings: {
-      commandToExecute: '''
-        powershell.exe -ExecutionPolicy Unrestricted -Command "
-          $maxAttempts = 12
-          $attempt = 0
-          $connected = $false
-          while (-not $connected -and $attempt -lt $maxAttempts) {
-            $attempt++
-            Write-Output "Connectivity check attempt $attempt of $maxAttempts"
-            try {
-              $response = Invoke-WebRequest -Uri 'https://login.microsoftonline.com' -UseBasicParsing -TimeoutSec 10
-              if ($response.StatusCode -eq 200) {
-                $connected = $true
-                Write-Output 'Network connectivity confirmed - login.microsoftonline.com reachable'
-              }
-            } catch {
-              Write-Output "Not yet reachable: $_"
-              Start-Sleep -Seconds 15
+    source: {
+      script: '''
+        $maxAttempts = 12
+        $attempt = 0
+        $connected = $false
+        while (-not $connected -and $attempt -lt $maxAttempts) {
+          $attempt++
+          Write-Output "Connectivity check attempt $attempt of $maxAttempts"
+          try {
+            $response = Invoke-WebRequest -Uri 'https://login.microsoftonline.com' -UseBasicParsing -TimeoutSec 10
+            if ($response.StatusCode -eq 200) {
+              $connected = $true
+              Write-Output 'Network connectivity confirmed - login.microsoftonline.com reachable'
             }
+          } catch {
+            Write-Output "Not yet reachable: $_"
+            Start-Sleep -Seconds 15
           }
-          if (-not $connected) {
-            Write-Error 'Network connectivity check failed after all attempts'
-            exit 1
-          }
-        "
+        }
+        if (-not $connected) {
+          throw 'Network connectivity check failed after all attempts'
+        }
       '''
     }
+    asyncExecution: false
+    timeoutInSeconds: 180
   }
 }]
 
@@ -530,37 +525,62 @@ resource avdAgentExtension 'Microsoft.Compute/virtualMachines/extensions@2023-09
   }
 }]
 
-// 18. FSLogix configuration via Custom Script Extension
-//     Writes the FSLogix registry keys that point to the Azure Files share
-resource fslogixConfigExtension 'Microsoft.Compute/virtualMachines/extensions@2023-09-01' = [for i in range(0, vmCount): {
+// 18. FSLogix configuration via Run Command
+//     Uses Microsoft.Compute/virtualMachines/runCommands to avoid Custom Script Extension conflict
+//     when the golden image already has CustomScriptExtension baked in
+resource fslogixConfigRunCommand 'Microsoft.Compute/virtualMachines/runCommands@2023-09-01' = [for i in range(0, vmCount): {
   name: '${prefix}-vm-${i}/FSLogixConfig'
   location: location
   tags: tags
   dependsOn: [ avdAgentExtension ]
   properties: {
-    publisher: 'Microsoft.Compute'
-    type: 'CustomScriptExtension'
-    typeHandlerVersion: '1.10'
-    autoUpgradeMinorVersion: true
-    settings: {
-      commandToExecute: '''
-        powershell.exe -ExecutionPolicy Unrestricted -Command "
-          $RegPath = 'HKLM:\\SOFTWARE\\FSLogix\\Profiles';
-          New-Item -Path $RegPath -Force | Out-Null;
-          Set-ItemProperty -Path $RegPath -Name Enabled         -Value 1           -Type DWord;
-          Set-ItemProperty -Path $RegPath -Name VHDLocations    -Value '\\\\${storageAccount.name}.file.${environment().suffixes.storage}\\fslogix-profiles' -Type MultiString;
-          Set-ItemProperty -Path $RegPath -Name VolumeType      -Value 'VHDX'      -Type String;
-          Set-ItemProperty -Path $RegPath -Name SizeInMBs       -Value ${fslogixProfileSizeGB * 1024} -Type DWord;
-          Set-ItemProperty -Path $RegPath -Name DeleteLocalProfileWhenVHDShouldApply -Value 1 -Type DWord;
-          Set-ItemProperty -Path $RegPath -Name FlipFlopProfileDirectoryName -Value 1 -Type DWord;
-          Set-ItemProperty -Path $RegPath -Name AccessNetworkAsComputerObject -Value 1 -Type DWord;
-          $CloudPath = 'HKLM:\\SOFTWARE\\Policies\\FSLogix\\ODFC';
-          New-Item -Path $CloudPath -Force | Out-Null;
-          Set-ItemProperty -Path $CloudPath -Name StorageAccountName -Value '${storageAccount.name}' -Type String;
-          Write-Output 'FSLogix Entra Kerberos registry keys written successfully.'
-        "
+    source: {
+      script: '''
+        $RegPath = 'HKLM:\SOFTWARE\FSLogix\Profiles'
+        $VHDLocation = '\\\\${storageAccount.name}.file.${environment().suffixes.storage}\\fslogix-profiles'
+
+        # Check if FSLogix is installed and install it if not
+        Write-Output 'Checking FSLogix installation...'
+        $fslogixInstalled = Test-Path 'C:\Program Files\FSLogix\Apps\frx.exe'
+        if ($fslogixInstalled) {
+          Write-Output 'FSLogix is already installed - skipping installation'
+        } else {
+          Write-Output 'FSLogix not found - downloading and installing...'
+          $installerUrl = 'https://aka.ms/fslogix_download'
+          $installerZip = 'C:\Windows\Temp\FSLogix.zip'
+          $installerDir = 'C:\Windows\Temp\FSLogix'
+          Invoke-WebRequest -Uri $installerUrl -OutFile $installerZip -UseBasicParsing
+          Expand-Archive -Path $installerZip -DestinationPath $installerDir -Force
+          $installer = Get-ChildItem -Path $installerDir -Recurse -Filter 'FSLogixAppsSetup.exe' | Where-Object { $_.FullName -like '*x64*' } | Select-Object -First 1
+          if ($installer) {
+            Start-Process -FilePath $installer.FullName -ArgumentList '/install /quiet /norestart' -Wait
+            Write-Output 'FSLogix installation complete'
+          } else {
+            Write-Error 'FSLogix installer not found in zip'
+            exit 1
+          }
+        }
+
+        New-Item -Path $RegPath -Force | Out-Null
+        Set-ItemProperty -Path $RegPath -Name Enabled                              -Value 1           -Type DWord
+        Set-ItemProperty -Path $RegPath -Name VHDLocations                         -Value $VHDLocation -Type MultiString
+        Set-ItemProperty -Path $RegPath -Name VolumeType                           -Value 'VHDX'      -Type String
+        Set-ItemProperty -Path $RegPath -Name SizeInMBs                            -Value ${fslogixProfileSizeGB * 1024} -Type DWord
+        Set-ItemProperty -Path $RegPath -Name DeleteLocalProfileWhenVHDShouldApply -Value 1           -Type DWord
+        Set-ItemProperty -Path $RegPath -Name FlipFlopProfileDirectoryName         -Value 1           -Type DWord
+        Set-ItemProperty -Path $RegPath -Name AccessNetworkAsComputerObject        -Value 1           -Type DWord
+
+        $CloudPath = 'HKLM:\SOFTWARE\Policies\FSLogix\ODFC'
+        New-Item -Path $CloudPath -Force | Out-Null
+        Set-ItemProperty -Path $CloudPath -Name StorageAccountName -Value '${storageAccount.name}' -Type String
+
+        # Verify keys were written correctly
+        $written = Get-ItemProperty -Path $RegPath
+        Write-Output "FSLogix configuration complete. VHDLocations set to: $($written.VHDLocations)"
       '''
     }
+    asyncExecution: false
+    timeoutInSeconds: 300  // Allow time for FSLogix download and install if needed
   }
 }]
 
