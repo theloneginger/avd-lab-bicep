@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "9474524941402721188"
+      "templateHash": "14602165234361615944"
     }
   },
   "parameters": {
@@ -626,13 +626,28 @@
       "tags": "[variables('tags')]",
       "properties": {
         "source": {
-          "script": "        $RegPath = 'HKLM:\\SOFTWARE\\FSLogix\\Profiles'\n        $VHDLocation = '\\\\\\\\${storageAccount.name}.file.${environment().suffixes.storage}\\\\fslogix-profiles'\n\n        # Check if FSLogix is installed and install it if not\n        Write-Output 'Checking FSLogix installation...'\n        $fslogixInstalled = Test-Path 'C:\\Program Files\\FSLogix\\Apps\\frx.exe'\n        if ($fslogixInstalled) {\n          Write-Output 'FSLogix is already installed - skipping installation'\n        } else {\n          Write-Output 'FSLogix not found - downloading and installing...'\n          $installerUrl = 'https://aka.ms/fslogix_download'\n          $installerZip = 'C:\\Windows\\Temp\\FSLogix.zip'\n          $installerDir = 'C:\\Windows\\Temp\\FSLogix'\n          Invoke-WebRequest -Uri $installerUrl -OutFile $installerZip -UseBasicParsing\n          Expand-Archive -Path $installerZip -DestinationPath $installerDir -Force\n          $installer = Get-ChildItem -Path $installerDir -Recurse -Filter 'FSLogixAppsSetup.exe' | Where-Object { $_.FullName -like '*x64*' } | Select-Object -First 1\n          if ($installer) {\n            Start-Process -FilePath $installer.FullName -ArgumentList '/install /quiet /norestart' -Wait\n            Write-Output 'FSLogix installation complete'\n          } else {\n            Write-Error 'FSLogix installer not found in zip'\n            exit 1\n          }\n        }\n\n        New-Item -Path $RegPath -Force | Out-Null\n        Set-ItemProperty -Path $RegPath -Name Enabled                              -Value 1           -Type DWord\n        Set-ItemProperty -Path $RegPath -Name VHDLocations                         -Value $VHDLocation -Type MultiString\n        Set-ItemProperty -Path $RegPath -Name VolumeType                           -Value 'VHDX'      -Type String\n        Set-ItemProperty -Path $RegPath -Name SizeInMBs                            -Value ${fslogixProfileSizeGB * 1024} -Type DWord\n        Set-ItemProperty -Path $RegPath -Name DeleteLocalProfileWhenVHDShouldApply -Value 1           -Type DWord\n        Set-ItemProperty -Path $RegPath -Name FlipFlopProfileDirectoryName         -Value 1           -Type DWord\n        Set-ItemProperty -Path $RegPath -Name AccessNetworkAsComputerObject        -Value 1           -Type DWord\n\n        $CloudPath = 'HKLM:\\SOFTWARE\\Policies\\FSLogix\\ODFC'\n        New-Item -Path $CloudPath -Force | Out-Null\n        Set-ItemProperty -Path $CloudPath -Name StorageAccountName -Value '${storageAccount.name}' -Type String\n\n        # Verify keys were written correctly\n        $written = Get-ItemProperty -Path $RegPath\n        Write-Output \"FSLogix configuration complete. VHDLocations set to: $($written.VHDLocations)\"\n      "
+          "script": "param([string]$VHDLocation, [string]$StorageAccountName, [int]$SizeInMBs)\n$RegPath = 'HKLM:\\SOFTWARE\\FSLogix\\Profiles'\nWrite-Output 'Checking FSLogix installation...'\n$fslogixInstalled = Test-Path 'C:\\Program Files\\FSLogix\\Apps\\frx.exe'\nif ($fslogixInstalled) { Write-Output 'FSLogix is already installed - skipping installation' } else { Write-Output 'FSLogix not found - downloading and installing...'\n$installerZip = 'C:\\Windows\\Temp\\FSLogix.zip'\n$installerDir = 'C:\\Windows\\Temp\\FSLogix'\nInvoke-WebRequest -Uri 'https://aka.ms/fslogix_download' -OutFile $installerZip -UseBasicParsing\nExpand-Archive -Path $installerZip -DestinationPath $installerDir -Force\n$installer = Get-ChildItem -Path $installerDir -Recurse -Filter 'FSLogixAppsSetup.exe' | Where-Object { $_.FullName -like '*x64*' } | Select-Object -First 1\nif ($installer) { Start-Process -FilePath $installer.FullName -ArgumentList '/install /quiet /norestart' -Wait\nWrite-Output 'FSLogix installation complete' } else { Write-Error 'FSLogix installer not found in zip'\nexit 1 } }\nNew-Item -Path $RegPath -Force | Out-Null\nSet-ItemProperty -Path $RegPath -Name Enabled -Value 1 -Type DWord\nSet-ItemProperty -Path $RegPath -Name VHDLocations -Value $VHDLocation -Type MultiString\nSet-ItemProperty -Path $RegPath -Name VolumeType -Value 'VHDX' -Type String\nSet-ItemProperty -Path $RegPath -Name SizeInMBs -Value $SizeInMBs -Type DWord\nSet-ItemProperty -Path $RegPath -Name DeleteLocalProfileWhenVHDShouldApply -Value 1 -Type DWord\nSet-ItemProperty -Path $RegPath -Name FlipFlopProfileDirectoryName -Value 1 -Type DWord\nSet-ItemProperty -Path $RegPath -Name AccessNetworkAsComputerObject -Value 1 -Type DWord\n$CloudPath = 'HKLM:\\SOFTWARE\\Policies\\FSLogix\\ODFC'\nNew-Item -Path $CloudPath -Force | Out-Null\nSet-ItemProperty -Path $CloudPath -Name StorageAccountName -Value $StorageAccountName -Type String\n$written = Get-ItemProperty -Path $RegPath\nWrite-Output \"FSLogix configuration complete. VHDLocations set to: $($written.VHDLocations)\""
         },
+        "parameters": [
+          {
+            "name": "VHDLocation",
+            "value": "[format('\\\\{0}.file.{1}\\fslogix-profiles', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id)), environment().suffixes.storage)]"
+          },
+          {
+            "name": "StorageAccountName",
+            "value": "[format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id))]"
+          },
+          {
+            "name": "SizeInMBs",
+            "value": "[string(mul(parameters('fslogixProfileSizeGB'), 1024))]"
+          }
+        ],
         "asyncExecution": false,
         "timeoutInSeconds": 300
       },
       "dependsOn": [
-        "avdAgentExtension"
+        "avdAgentExtension",
+        "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sa{1}', replace(parameters('prefix'), '-', ''), uniqueString(resourceGroup().id)))]"
       ]
     }
   ],
