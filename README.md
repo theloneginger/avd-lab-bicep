@@ -17,11 +17,19 @@ A fully automated Azure Virtual Desktop environment deployable either from the *
 | FSLogix Share | Quota calculated from profile size × user count |
 | Private Endpoint | Storage accessed privately over the VNet |
 | Private DNS Zone | `privatelink.file.core.windows.net` linked to VNet |
-| Host Pool | Pooled, BreadthFirst, Entra ID-joined |
+| Host Pool | Pooled, BreadthFirst, Entra ID-joined, SSO enabled |
 | App Group | Desktop App Group |
 | Workspace | Linked to App Group |
-| Session Hosts | 2× VMs (configurable), Trusted Launch, no public IP |
-| RBAC | AVD Users granted Desktop Virtualization User + FSLogix SMB roles |
+| Session Hosts | Configurable number of VMs, Trusted Launch, no public IP |
+| RBAC | AVD Users granted Desktop Virtualization User + VM User Login + FSLogix SMB roles |
+
+---
+
+## FSLogix authentication
+
+This deployment uses **storage account key authentication** for FSLogix profile containers. The storage account key is automatically retrieved at deploy time and stored in Windows Credential Manager on each session host — no manual steps required after deployment.
+
+> **Note:** For production environments, [Entra Kerberos authentication](entra-kerberos/README.md) is recommended as it uses identity-based access rather than a shared key. See the `entra-kerberos` folder for an alternative deployment that implements this.
 
 ---
 
@@ -29,19 +37,11 @@ A fully automated Azure Virtual Desktop environment deployable either from the *
 
 Before deploying, ensure you have:
 
-1. **A golden VM image** — either a Managed Image or a Shared Image Gallery version in the same subscription. It is recommended to install FSLogix into the golden image before capturing it as this saves time during deployment — however it is not required as the deployment will automatically download and install FSLogix if it is not detected on the VM
+1. **A golden VM image** — either a Managed Image or a Shared Image Gallery version in the same subscription. It is recommended to install FSLogix into the golden image before capturing it as this saves deployment time — however it is not required as the deployment will automatically download and install FSLogix if it is not detected on the VM
 2. **AVD Users** — an Entra ID security group containing your AVD users
-3. **AVD Devices** — an Entra ID security group (used for Intune policy targeting, no action needed at deploy time)
-4. **One-time storage setup** — after first deployment, run the following to enable Entra Kerberos on the storage account (only needed once per storage account):
+3. **AVD Devices** — an Entra ID security group for Intune policy targeting (no action needed at deploy time)
 
-```powershell
-$storageAccount = Get-AzStorageAccount -ResourceGroupName 'rg-avd-lab' -Name '<storage-account-name>'
-Set-AzStorageAccount -ResourceGroupName $storageAccount.ResourceGroupName `
-                     -Name $storageAccount.StorageAccountName `
-                     -EnableAzureActiveDirectoryKerberosForFile $true `
-                     -ActiveDirectoryDomainName '<your-tenant>.onmicrosoft.com' `
-                     -ActiveDirectoryDomainGuid '<your-tenant-id>'
-```
+That's it — no post-deployment configuration is required.
 
 ---
 
@@ -50,12 +50,11 @@ Set-AzStorageAccount -ResourceGroupName $storageAccount.ResourceGroupName `
 Click the **Deploy to Azure** button at the top of this page. This opens a multi-step wizard in the Azure Portal with:
 
 - Resource prefix text box
-- Golden image selector (pulls your Managed Images live from your subscription)
-- Shared Image Gallery version override text box
-- VM count dropdown and size selector (filtered to D-series)
+- Golden image resource ID with format validation
+- VM count dropdown and size selector
 - Password field with complexity validation and confirmation
 - AVD Users group Object ID with GUID format validation
-- FSLogix profile size and user count sliders with **live share quota calculation**
+- FSLogix profile size and user count dropdowns with share quota calculation
 - Storage redundancy dropdown (LRS / ZRS)
 - Full summary page before deploying
 
@@ -140,10 +139,11 @@ Azure Files Premium has a **minimum share size of 100 GB**. Examples:
 
 ## Repository structure
 
-| File | Purpose |
+| File/Folder | Purpose |
 |---|---|
-| `avd-lab.bicep` | Main Bicep template — all Azure resources defined here |
-| `avd-lab.json` | Compiled ARM JSON — used by the Deploy to Azure portal button |
+| `avd-lab.bicep` | Main Bicep template — storage key auth |
+| `avd-lab.json` | Compiled ARM JSON — used by the Deploy to Azure button |
 | `avd-lab.bicepparam` | Parameter values for PowerShell deployment |
-| `createUiDefinition.json` | Portal wizard UI — dropdowns, sliders, live validation |
+| `createUiDefinition.json` | Portal wizard UI — dropdowns, validation |
 | `README.md` | This file |
+| `entra-kerberos/` | Alternative deployment using Entra Kerberos authentication |
