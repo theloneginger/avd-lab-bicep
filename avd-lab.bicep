@@ -552,7 +552,7 @@ resource fslogixConfigRunCommand 'Microsoft.Compute/virtualMachines/runCommands@
   properties: {
     source: {
       script: '''
-        param([string]$VHDLocation, [string]$StorageAccountName, [string]$StorageAccountKey, [int]$SizeInMBs)
+        param([string]$VHDLocation, [string]$StorageAccountName, [string]$StorageAccountKey, [int]$SizeInMBs, [string]$StorageSuffix)
 
         # ---- FSLogix install check ----
         Write-Output 'Checking FSLogix installation...'
@@ -590,7 +590,7 @@ resource fslogixConfigRunCommand 'Microsoft.Compute/virtualMachines/runCommands@
 
         # ---- Storage account key authentication ----
         # Stores the key in the Windows Credential Manager so FSLogix can mount the share
-        $credTarget = $StorageAccountName + '.file.' + 'core.windows.net'
+        $credTarget = $StorageAccountName + '.file.' + $StorageSuffix
         $secureKey = ConvertTo-SecureString -String $StorageAccountKey -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential("AZURE\$StorageAccountName", $secureKey)
         cmdkey /add:$credTarget /user:("AZURE\" + $StorageAccountName) /pass:$StorageAccountKey
@@ -617,6 +617,10 @@ resource fslogixConfigRunCommand 'Microsoft.Compute/virtualMachines/runCommands@
       {
         name: 'SizeInMBs'
         value: string(fslogixProfileSizeGB * 1024)
+      }
+      {
+        name: 'StorageSuffix'
+        value: environment().suffixes.storage
       }
     ]
     asyncExecution: false
