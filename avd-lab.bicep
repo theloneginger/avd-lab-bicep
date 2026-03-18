@@ -376,7 +376,7 @@ resource avdUsersRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 // =============================================================================
 
 // Retrieve the host pool registration token (needed by the AVD agent extension)
-var hostPoolToken = hostPool.listRegistrationTokens().value[0].token
+var hostPoolToken = first(hostPool.listRegistrationTokens().value).token
 
 resource sessionHosts 'Microsoft.Compute/virtualMachines@2023-09-01' = [for i in range(0, vmCount): {
   name: '${prefix}-vm-${i}'
