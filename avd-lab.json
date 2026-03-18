@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "1228146068849017848"
+      "templateHash": "6501073771295565987"
     }
   },
   "parameters": {
@@ -586,16 +586,8 @@
           "configurationFunction": "Configuration.ps1\\AddSessionHost",
           "properties": {
             "hostPoolName": "[format('{0}-hp', parameters('prefix'))]",
-            "registrationInfoTokenCredential": {
-              "UserName": "PLACEHOLDER",
-              "Password": "PrivateSettingsRef:registrationInfoToken"
-            },
+            "registrationInfoToken": "[first(listRegistrationTokens(resourceId('Microsoft.DesktopVirtualization/hostPools', format('{0}-hp', parameters('prefix'))), '2023-09-05').value).token]",
             "aadJoin": true
-          }
-        },
-        "protectedSettings": {
-          "items": {
-            "registrationInfoToken": "[first(listRegistrationTokens(resourceId('Microsoft.DesktopVirtualization/hostPools', format('{0}-hp', parameters('prefix'))), '2023-09-05').value).token]"
           }
         }
       },

@@ -523,16 +523,8 @@ resource avdAgentExtension 'Microsoft.Compute/virtualMachines/extensions@2023-09
       configurationFunction: 'Configuration.ps1\\AddSessionHost'
       properties: {
         hostPoolName: hostPool.name
-        registrationInfoTokenCredential: {
-          UserName: 'PLACEHOLDER'     // Required field by DSC schema - value is ignored
-          Password: 'PrivateSettingsRef:registrationInfoToken'
-        }
-        aadJoin: true                 // Tells DSC this is an Entra-only join (no AD DS)
-      }
-    }
-    protectedSettings: {
-      items: {
         registrationInfoToken: hostPoolToken
+        aadJoin: true                 // Tells DSC this is an Entra-only join (no AD DS)
       }
     }
   }
