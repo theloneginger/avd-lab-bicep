@@ -480,10 +480,11 @@ resource networkReadyExtension 'Microsoft.Compute/virtualMachines/runCommands@20
           $attempt++
           Write-Output "Connectivity check attempt $attempt of $maxAttempts"
           try {
-            $response = Invoke-WebRequest -Uri 'https://login.microsoftonline.com' -UseBasicParsing -TimeoutSec 10
+            $loginUrl = 'https://login.' + '${environment().authentication.loginEndpoint}'.Split('/')[2]
+            $response = Invoke-WebRequest -Uri $loginUrl -UseBasicParsing -TimeoutSec 10
             if ($response.StatusCode -eq 200) {
               $connected = $true
-              Write-Output 'Network connectivity confirmed - login.microsoftonline.com reachable'
+              Write-Output ('Network connectivity confirmed - ' + $loginUrl + ' reachable')
             }
           } catch {
             Write-Output "Not yet reachable: $_"
@@ -541,8 +542,8 @@ resource avdAgentExtension 'Microsoft.Compute/virtualMachines/extensions@2023-09
 }]
 
 // 18. FSLogix configuration via Run Command
-//     Uses Microsoft.Compute/virtualMachines/runCommands to avoid Custom Script Extension conflict
-//     when the golden image already has CustomScriptExtension baked in
+//     Uses storage account key authentication (Option 1)
+//     Option 2 (Entra Kerberos) requires Windows Hello for Business - can be added later
 resource fslogixConfigRunCommand 'Microsoft.Compute/virtualMachines/runCommands@2023-09-01' = [for i in range(0, vmCount): {
   name: '${prefix}-vm-${i}/FSLogixConfig'
   location: location
@@ -550,7 +551,55 @@ resource fslogixConfigRunCommand 'Microsoft.Compute/virtualMachines/runCommands@
   dependsOn: [ avdAgentExtension ]
   properties: {
     source: {
-      script: 'param([string]$VHDLocation, [string]$StorageAccountName, [int]$SizeInMBs)\n$RegPath = \'HKLM:\\SOFTWARE\\FSLogix\\Profiles\'\nWrite-Output \'Checking FSLogix installation...\'\n$fslogixInstalled = Test-Path \'C:\\Program Files\\FSLogix\\Apps\\frx.exe\'\nif ($fslogixInstalled) { Write-Output \'FSLogix is already installed - skipping installation\' } else { Write-Output \'FSLogix not found - downloading and installing...\'\n$installerZip = \'C:\\Windows\\Temp\\FSLogix.zip\'\n$installerDir = \'C:\\Windows\\Temp\\FSLogix\'\nInvoke-WebRequest -Uri \'https://aka.ms/fslogix_download\' -OutFile $installerZip -UseBasicParsing\nExpand-Archive -Path $installerZip -DestinationPath $installerDir -Force\n$installer = Get-ChildItem -Path $installerDir -Recurse -Filter \'FSLogixAppsSetup.exe\' | Where-Object { $_.FullName -like \'*x64*\' } | Select-Object -First 1\nif ($installer) { Start-Process -FilePath $installer.FullName -ArgumentList \'/install /quiet /norestart\' -Wait\nWrite-Output \'FSLogix installation complete\' } else { Write-Error \'FSLogix installer not found in zip\'\nexit 1 } }\nNew-Item -Path $RegPath -Force | Out-Null\nSet-ItemProperty -Path $RegPath -Name Enabled -Value 1 -Type DWord\nSet-ItemProperty -Path $RegPath -Name VHDLocations -Value $VHDLocation -Type MultiString\nSet-ItemProperty -Path $RegPath -Name VolumeType -Value \'VHDX\' -Type String\nSet-ItemProperty -Path $RegPath -Name SizeInMBs -Value $SizeInMBs -Type DWord\nSet-ItemProperty -Path $RegPath -Name DeleteLocalProfileWhenVHDShouldApply -Value 1 -Type DWord\nSet-ItemProperty -Path $RegPath -Name FlipFlopProfileDirectoryName -Value 1 -Type DWord\nSet-ItemProperty -Path $RegPath -Name AccessNetworkAsComputerObject -Value 1 -Type DWord\n$CloudPath = \'HKLM:\\SOFTWARE\\Policies\\FSLogix\\ODFC\'\nNew-Item -Path $CloudPath -Force | Out-Null\nSet-ItemProperty -Path $CloudPath -Name StorageAccountName -Value $StorageAccountName -Type String\n$written = Get-ItemProperty -Path $RegPath\nWrite-Output "FSLogix configuration complete. VHDLocations set to: $($written.VHDLocations)\n$KerbPath = \'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AAD\\Parameters\\Kerberos\'\nNew-Item -Path $KerbPath -Force | Out-Null\nSet-ItemProperty -Path $KerbPath -Name CloudKerberosTicketRetrievalEnabled -Value 1 -Type DWord\nWrite-Output \'Cloud Kerberos ticket retrieval enabled\'\n$LsaPath = \'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\Kerberos\\Parameters\'\nNew-Item -Path $LsaPath -Force | Out-Null\nSet-ItemProperty -Path $LsaPath -Name CloudKerberosTicketRetrievalEnabled -Value 1 -Type DWord\nWrite-Output \'LSA Kerberos parameters configured\'"
+      script: '''
+        param([string]$VHDLocation, [string]$StorageAccountName, [string]$StorageAccountKey, [int]$SizeInMBs)
+
+        # ---- FSLogix install check ----
+        Write-Output 'Checking FSLogix installation...'
+        $fslogixInstalled = Test-Path 'C:\Program Files\FSLogix\Apps\frx.exe'
+        if ($fslogixInstalled) {
+          Write-Output 'FSLogix is already installed - skipping installation'
+        } else {
+          Write-Output 'FSLogix not found - downloading and installing...'
+          $installerZip = 'C:\Windows\Temp\FSLogix.zip'
+          $installerDir = 'C:\Windows\Temp\FSLogix'
+          Invoke-WebRequest -Uri 'https://aka.ms/fslogix_download' -OutFile $installerZip -UseBasicParsing
+          Expand-Archive -Path $installerZip -DestinationPath $installerDir -Force
+          $installer = Get-ChildItem -Path $installerDir -Recurse -Filter 'FSLogixAppsSetup.exe' `
+                       | Where-Object { $_.FullName -like '*x64*' } `
+                       | Select-Object -First 1
+          if ($installer) {
+            Start-Process -FilePath $installer.FullName -ArgumentList '/install /quiet /norestart' -Wait
+            Write-Output 'FSLogix installation complete'
+          } else {
+            Write-Error 'FSLogix installer not found in zip'
+            exit 1
+          }
+        }
+
+        # ---- FSLogix profile registry keys ----
+        $RegPath = 'HKLM:\SOFTWARE\FSLogix\Profiles'
+        New-Item -Path $RegPath -Force | Out-Null
+        Set-ItemProperty -Path $RegPath -Name Enabled                              -Value 1            -Type DWord
+        Set-ItemProperty -Path $RegPath -Name VHDLocations                         -Value $VHDLocation -Type MultiString
+        Set-ItemProperty -Path $RegPath -Name VolumeType                           -Value 'VHDX'       -Type String
+        Set-ItemProperty -Path $RegPath -Name SizeInMBs                            -Value $SizeInMBs   -Type DWord
+        Set-ItemProperty -Path $RegPath -Name DeleteLocalProfileWhenVHDShouldApply -Value 1            -Type DWord
+        Set-ItemProperty -Path $RegPath -Name FlipFlopProfileDirectoryName         -Value 1            -Type DWord
+        Set-ItemProperty -Path $RegPath -Name AccessNetworkAsComputerObject        -Value 1            -Type DWord
+
+        # ---- Storage account key authentication ----
+        # Stores the key in the Windows Credential Manager so FSLogix can mount the share
+        $credTarget = $StorageAccountName + '.file.' + 'core.windows.net'
+        $secureKey = ConvertTo-SecureString -String $StorageAccountKey -AsPlainText -Force
+        $credential = New-Object System.Management.Automation.PSCredential("AZURE\$StorageAccountName", $secureKey)
+        cmdkey /add:$credTarget /user:("AZURE\" + $StorageAccountName) /pass:$StorageAccountKey
+        Write-Output ('Storage account key credential stored for: ' + $credTarget)
+
+        # ---- Verify ----
+        $written = Get-ItemProperty -Path $RegPath
+        Write-Output ('FSLogix configuration complete. VHDLocations set to: ' + $written.VHDLocations)
+      '''
     }
     parameters: [
       {
@@ -560,6 +609,10 @@ resource fslogixConfigRunCommand 'Microsoft.Compute/virtualMachines/runCommands@
       {
         name: 'StorageAccountName'
         value: storageAccount.name
+      }
+      {
+        name: 'StorageAccountKey'
+        value: storageAccount.listKeys().keys[0].value
       }
       {
         name: 'SizeInMBs'
