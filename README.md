@@ -71,14 +71,25 @@ cd avd-lab-bicep
 
 ### 2. Edit the deployment script
 
-Open `deploy.ps1` and fill in your values:
+Open `deploy.ps1` and fill in your values. The following parameters are required:
 
-```powershell
--goldenImageId '/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Compute/images/<image-name>'
--avdUsersGroupId '<object-id-of-avd-users-group>'
-```
+| Parameter | Description |
+|---|---|
+| `goldenImageId` | Full resource ID of your Managed Image or Shared Image Gallery version |
+| `avdUsersGroupId` | Object ID of your AVD Users Entra ID security group |
 
-Optionally adjust any other parameters such as `-vmSize`, `-vmCount`, `-fslogixProfileSizeGB` or `-fslogixUserCount`.
+The following parameters are optional and have sensible defaults:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `prefix` | `avd-lab` | Short prefix applied to all resource names |
+| `location` | `uksouth` | Azure region to deploy into |
+| `vmCount` | `2` | Number of session host VMs to deploy |
+| `vmSize` | `Standard_D2as_v6` | Size of each session host VM |
+| `vmAdminUsername` | `avdadmin` | Local admin username on each session host |
+| `storageAccountSku` | `Premium_LRS` | Storage redundancy — use `Premium_ZRS` for zone redundancy |
+| `fslogixProfileSizeGB` | `20` | Maximum size of each user's FSLogix profile VHDX in GB |
+| `fslogixUserCount` | `4` | Number of users — used to calculate the file share quota |
 
 ### 3. Connect to Azure
 
