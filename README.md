@@ -69,16 +69,16 @@ git clone https://github.com/theloneginger/avd-lab-bicep.git
 cd avd-lab-bicep
 ```
 
-### 2. Fill in your values
+### 2. Edit the deployment script
 
-Edit `avd-lab.bicepparam`:
+Open `deploy.ps1` and fill in your values:
 
-```bicep
-param goldenImageId        = '/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Compute/images/<image-name>'
-param avdUsersGroupId      = '<object-id-of-avd-users-group>'
-param fslogixProfileSizeGB = 20
-param fslogixUserCount     = 4
+```powershell
+-goldenImageId '/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Compute/images/<image-name>'
+-avdUsersGroupId '<object-id-of-avd-users-group>'
 ```
+
+Optionally adjust any other parameters such as `-vmSize`, `-vmCount`, `-fslogixProfileSizeGB` or `-fslogixUserCount`.
 
 ### 3. Connect to Azure
 
@@ -87,35 +87,13 @@ Connect-AzAccount
 Set-AzContext -SubscriptionId '<your-subscription-id>'
 ```
 
-### 4. Create the resource group
+### 4. Run the deployment script
 
 ```powershell
-New-AzResourceGroup -Name 'rg-avd-lab' -Location 'uksouth'
+.\deploy.ps1
 ```
 
-### 5. Preview changes (optional but recommended)
-
-```powershell
-$securePassword = Read-Host -Prompt 'VM Admin Password' -AsSecureString
-
-New-AzResourceGroupDeployment `
-  -ResourceGroupName 'rg-avd-lab' `
-  -TemplateFile '.\avd-lab.bicep' `
-  -TemplateParameterFile '.\avd-lab.bicepparam' `
-  -vmAdminPassword $securePassword `
-  -WhatIf
-```
-
-### 6. Deploy
-
-```powershell
-New-AzResourceGroupDeployment `
-  -ResourceGroupName 'rg-avd-lab' `
-  -TemplateFile '.\avd-lab.bicep' `
-  -TemplateParameterFile '.\avd-lab.bicepparam' `
-  -vmAdminPassword $securePassword `
-  -Verbose
-```
+The script will prompt for the VM admin password securely, create the resource group if it doesn't exist, and deploy all resources.
 
 ---
 
@@ -141,9 +119,9 @@ Azure Files Premium has a **minimum share size of 100 GB**. Examples:
 
 | File/Folder | Purpose |
 |---|---|
-| `avd-lab.bicep` | Main Bicep template — storage key auth |
+| `avd-lab.bicep` | Main Bicep template — all Azure resources defined here |
 | `avd-lab.json` | Compiled ARM JSON — used by the Deploy to Azure button |
-| `avd-lab.bicepparam` | Parameter values for PowerShell deployment |
+| `deploy.ps1` | PowerShell deployment script — fill in your values before running |
 | `createUiDefinition.json` | Portal wizard UI — dropdowns, validation |
 | `README.md` | This file |
 | `entra-kerberos/` | Alternative deployment using Entra Kerberos authentication |
