@@ -588,6 +588,15 @@ resource fslogixConfigRunCommand 'Microsoft.Compute/virtualMachines/runCommands@
         Set-ItemProperty -Path $RegPath -Name SIDDirNamePattern                    -Value '%username%' -Type String
         Set-ItemProperty -Path $RegPath -Name SIDDirNameMatch                      -Value '%username%' -Type String
         Set-ItemProperty -Path $RegPath -Name AccessNetworkAsComputerObject        -Value 1            -Type DWord
+        Set-ItemProperty -Path $RegPath -Name PreventLoginWithFailure              -Value 1            -Type DWord
+        Set-ItemProperty -Path $RegPath -Name VolumeWaitTimeMS                     -Value 20000        -Type DWord
+        Set-ItemProperty -Path $RegPath -Name LockedRetryCount                     -Value 12           -Type DWord
+        Set-ItemProperty -Path $RegPath -Name LockedRetryInterval                  -Value 5            -Type DWord
+        Set-ItemProperty -Path $RegPath -Name ReAttachIntervalSeconds              -Value 15           -Type DWord
+        Set-ItemProperty -Path $RegPath -Name ReAttachRetryCount                   -Value 3            -Type DWord
+        Set-ItemProperty -Path $RegPath -Name PreventLoginWithTempProfile          -Value 1            -Type DWord
+        Set-ItemProperty -Path $RegPath -Name ConcurrentUserSessions               -Value 1            -Type DWord
+        Set-ItemProperty -Path $RegPath -Name ProfileType                          -Value 0            -Type DWord
 
         # ---- Storage account key authentication ----
         # Stores the key in the Windows Credential Manager so FSLogix can mount the share
@@ -596,6 +605,21 @@ resource fslogixConfigRunCommand 'Microsoft.Compute/virtualMachines/runCommands@
         $credential = New-Object System.Management.Automation.PSCredential("AZURE\$StorageAccountName", $secureKey)
         cmdkey /add:$credTarget /user:("AZURE\" + $StorageAccountName) /pass:$StorageAccountKey
         Write-Output ('Storage account key credential stored for: ' + $credTarget)
+
+        # ---- Intune enrolment trigger ----
+        # Attempts to trigger MDM enrolment - continues if it fails
+        try {
+          Write-Output 'Attempting Intune MDM enrolment...'
+          $enrollPath = 'C:\Windows\System32\DeviceEnroller.exe'
+          if (Test-Path $enrollPath) {
+            Start-Process -FilePath $enrollPath -ArgumentList '/c /AutoEnrollMDM' -Wait -NoNewWindow
+            Write-Output 'Intune enrolment triggered successfully'
+          } else {
+            Write-Output 'DeviceEnroller.exe not found - skipping Intune enrolment'
+          }
+        } catch {
+          Write-Output ('Intune enrolment failed but continuing: ' + $_.Exception.Message)
+        }
 
         # ---- Verify ----
         $written = Get-ItemProperty -Path $RegPath
