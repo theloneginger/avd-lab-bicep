@@ -585,7 +585,8 @@ resource fslogixConfigRunCommand 'Microsoft.Compute/virtualMachines/runCommands@
         Set-ItemProperty -Path $RegPath -Name VolumeType                           -Value 'VHDX'       -Type String
         Set-ItemProperty -Path $RegPath -Name SizeInMBs                            -Value $SizeInMBs   -Type DWord
         Set-ItemProperty -Path $RegPath -Name DeleteLocalProfileWhenVHDShouldApply -Value 1            -Type DWord
-        Set-ItemProperty -Path $RegPath -Name FlipFlopProfileDirectoryName         -Value 1            -Type DWord
+        Set-ItemProperty -Path $RegPath -Name SIDDirNamePattern                    -Value '%username%' -Type String
+        Set-ItemProperty -Path $RegPath -Name SIDDirNameMatch                      -Value '%username%' -Type String
         Set-ItemProperty -Path $RegPath -Name AccessNetworkAsComputerObject        -Value 1            -Type DWord
 
         # ---- Storage account key authentication ----
