@@ -29,7 +29,7 @@ A fully automated Azure Virtual Desktop environment deployable either from the *
 
 This deployment uses **storage account key authentication** for FSLogix profile containers. The storage account key is automatically retrieved at deploy time and stored in Windows Credential Manager on each session host — no manual steps required after deployment.
 
-> **Note:** For production environments, [Entra Kerberos authentication](entra-kerberos/README.md) is recommended as it uses identity-based access rather than a shared key. See the `entra-kerberos` folder for an alternative deployment that implements this.
+> **Note:** For production environments, Entra Kerberos authentication is recommended as it uses identity-based access rather than a shared key. It is not implemented in this lab because it requires Windows Hello for Business or FIDO2 passkeys to be configured — password-based sign-in is not supported with Entra Kerberos for Azure Files. This will be available as an optional deployment in a future update to this repository.
 
 ---
 
@@ -135,4 +135,3 @@ Azure Files Premium has a **minimum share size of 100 GB**. Examples:
 | `deploy.ps1` | PowerShell deployment script — fill in your values before running |
 | `createUiDefinition.json` | Portal wizard UI — dropdowns, validation |
 | `README.md` | This file |
-| `entra-kerberos/` | Alternative deployment using Entra Kerberos authentication |
