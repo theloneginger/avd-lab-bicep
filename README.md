@@ -95,7 +95,7 @@ The following parameters are optional and have sensible defaults:
 
 ```powershell
 Connect-AzAccount
-Set-AzContext -SubscriptionId '<your-subscription-id>'
+Set-AzContext '<your-subscription-id>'
 ```
 
 ### 4. Run the deployment script

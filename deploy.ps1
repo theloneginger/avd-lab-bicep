@@ -3,7 +3,7 @@
 
 # Connect to Azure (comment out if already connected)
 # Connect-AzAccount
-# Set-AzContext -SubscriptionId '<your-subscription-id>'
+# Set-AzContext '<your-subscription-id>'
 
 # Create resource group if it doesn't exist
 $resourceGroupName = 'AVDLab'
